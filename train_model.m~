@@ -1,0 +1,59 @@
+function [mu, F, G, Sigma] = train_model(data, niters, ndim)
+% n - num locations
+% b - num obs per location
+% d - dimensionality of input
+[b, d, n] = size(data);
+
+% initialize parameters
+mu = mean(data, [1, 3])';
+F = randn(d, ndim);
+G = randn(d, ndim);
+Sigma = exp(randn(d, 1));
+
+for i=1:niters
+    B1 = zeros(d, 2 * ndim);
+    B2 = zeros(2 * ndim, 2 * ndim);
+    Sigma1 = zeros(d, d);
+    % start accumulating llhood
+    llhood = 0;
+    % perform E step for dataset, compute M-step update steps
+    [mup, A, Sp] = generateCompositeMatrices(data(:, :, 1), mu, F, G, Sigma);
+    [NA, dA] = size(A);
+    X = inv(A' .* repmat(1 ./ Sp', dA, 1) * A + eye(dA));
+    % for llhood eval, generate cholesky
+    Cov1 = A * A' + diag(Sp);
+    % generate covar params
+    [ldq, Rq] = logdet(Cov1, 'chol');
+    tic
+    for j=1:n
+        obsj = data(:, :, j);
+        ey = X * (A' .* repmat(1 ./ Sp', dA, 1)) * (reshape(obsj', [], 1) - mup);
+        eyyp = X + ey * ey';
+        % compute components of B update
+        z = zeros(b, 2 * ndim);
+        for k=1:b
+            z(k, :) = [ey(1:ndim)', ey(k * ndim + 1:(k+1) * ndim)'];
+            B2_11 = eyyp(1:ndim, 1:ndim);
+            B2_12 = eyyp(1:ndim, k*ndim+1:(k+1)*ndim);
+            B2_21 = eyyp(k*ndim+1:(k+1)*ndim, 1:ndim);
+            B2_22 = eyyp(k * ndim + 1: (k+1) * ndim, k * ndim + 1: (k+1) * ndim);
+            B2 = B2 + [B2_11, B2_12; B2_21, B2_22];
+        end
+        B1 = B1 + (obsj - repmat(mu', b, 1))' * z;
+        % compute update for part of Sigma
+        Sigma1 = Sigma1 + obsj' * obsj;
+        % update llhood
+        llhood = llhood + logmvnpdf(reshape([x; Xq]', [], 1), mupq, ldq, Rq);
+    end
+    toc
+    % compute B
+    B = B1 * inv(B2);
+    % split F, G
+    F = B(:, 1:ndim);
+    G = B(:, ndim+1:end);
+    % compute Sigma
+    Sigma = 1 / (n * b) * diag(Sigma1 - B * B1');
+    % compute likelihood
+end
+end
+

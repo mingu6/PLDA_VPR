@@ -1,0 +1,9 @@
+function llh = computeloglhoods(X, mu, F, G, Sigma)
+[n, b, d] = size(X);
+for i=1:n
+    x = X(i, :, :);
+    [mup, A, Sp] = generateCompositeMatrices(x, mu, F, G, Sigma);
+    logmvnpdf(reshape(x', [], 1), mup, A * A' + Sp);
+    
+end
+end
